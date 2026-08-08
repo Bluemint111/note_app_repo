@@ -253,3 +253,86 @@
 .note-card-actions button.delete-button {
   background: #ff3b30;
 }
+
+.auth-shell {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+  background: linear-gradient(180deg, #eef5ff 0%, #f8fafc 100%);
+}
+
+.auth-card {
+  width: min(460px, 100%);
+  padding: 32px;
+  border-radius: 28px;
+  background: #ffffff;
+  box-shadow: 0 20px 50px rgba(15, 15, 15, 0.08);
+}
+
+.auth-card h1 {
+  margin: 0 0 12px;
+  font-size: 28px;
+}
+
+.auth-card p {
+  margin: 0 0 22px;
+  color: #6b7280;
+  line-height: 1.6;
+}
+
+.auth-error {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #ffe7e7;
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.auth-field {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+  font-size: 14px;
+  color: #111827;
+}
+
+.auth-field input {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+  font-size: 15px;
+}
+
+.auth-action-row {
+  display: grid;
+  gap: 12px;
+}
+
+.auth-action-row button {
+  min-height: 48px;
+  border-radius: 16px;
+  border: none;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-action-row button:first-of-type {
+  background: #007aff;
+  color: #fff;
+}
+
+.auth-action-row button.auth-toggle {
+  background: transparent;
+  color: #007aff;
+}
+
+.signed-in-as {
+  margin: 4px 0 0;
+  color: #6b7280;
+  font-size: 14px;
+}

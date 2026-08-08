@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 
@@ -10,9 +11,66 @@ app.use(cors());
 app.use(express.json());
 
 const notesFile = path.join(__dirname, 'notes.json');
+const authSecret = process.env.AUTH_SECRET || 'default_auth_secret';
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://gjeqvnyufzmrpoedralf.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdqZXF2bnl1ZnptcnBvZWRyYWxmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4Mzc3NDQ1MywiZXhwIjoyMDk5MzUwNDUzfQ.jqbFv31ZZn5DqN7kIjLaLOlWRIuo0qHRVcSISYzJfy4';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+function hashPassword(password) {
+  return crypto
+    .createHash('sha256')
+    .update(`${String(password)}:${authSecret}`)
+    .digest('hex');
+}
+
+function makeAuthToken(user) {
+  const tokenHash = crypto
+    .createHash('sha256')
+    .update(`${user.password_hash}:${authSecret}`)
+    .digest('hex');
+
+  return Buffer.from(`${user.id}:${tokenHash}`).toString('base64');
+}
+
+async function verifyAuthToken(token) {
+  try {
+    const decoded = Buffer.from(token, 'base64').toString('utf8');
+    const separatorIndex = decoded.indexOf(':');
+    if (separatorIndex < 0) return null;
+
+    const id = decoded.slice(0, separatorIndex);
+    const tokenHash = decoded.slice(separatorIndex + 1);
+    if (!id || !tokenHash) return null;
+
+    const { data, error } = await supabase.from('users').select('id,username,password_hash').eq('id', id).maybeSingle();
+    if (error || !data) return null;
+
+    const expectedHash = crypto
+      .createHash('sha256')
+      .update(`${data.password_hash}:${authSecret}`)
+      .digest('hex');
+
+    return expectedHash === tokenHash ? data : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+const authenticate = async (req, res, next) => {
+  const authHeader = String(req.headers.authorization || '');
+  if (!authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing auth token.' });
+  }
+
+  const token = authHeader.replace('Bearer ', '').trim();
+  const user = await verifyAuthToken(token);
+  if (!user) {
+    return res.status(401).json({ error: 'Invalid auth token.' });
+  }
+
+  req.user = user;
+  next();
+};
 
 const runFetch = (...args) => {
   if (typeof fetch !== 'function') {
@@ -104,6 +162,70 @@ function sendFallback(res, note, id) {
   const fallbackNote = saveFallbackNote(note, id);
   return res.status(200).json({ ...fallbackNote, fallback: true });
 }
+
+app.post('/login', async (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required.' });
+  }
+
+  try {
+    const passwordHash = hashPassword(password);
+    const { data, error } = await supabase
+      .from('users')
+      .select('id,username,password_hash')
+      .eq('username', String(username).trim().toLowerCase())
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data || data.password_hash !== passwordHash) {
+      return res.status(401).json({ error: 'Invalid username or password.' });
+    }
+
+    return res.json({
+      user: { id: data.id, username: data.username },
+      token: makeAuthToken(data)
+    });
+  } catch (err) {
+    console.error('Login error:', err.message || err);
+    return res.status(500).json({ error: 'Login failed.' });
+  }
+});
+
+app.post('/register', async (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required.' });
+  }
+
+  try {
+    const normalizedUsername = String(username).trim().toLowerCase();
+    const passwordHash = hashPassword(password);
+    const { data, error } = await supabase
+      .from('users')
+      .insert([{ username: normalizedUsername, password_hash: passwordHash }])
+      .select('id,username,password_hash')
+      .single();
+
+    if (error) {
+      if (error.message?.includes('duplicate') || error.code === '23505') {
+        return res.status(409).json({ error: 'Username is already taken.' });
+      }
+      throw error;
+    }
+
+    return res.status(201).json({
+      user: { id: data.id, username: data.username },
+      token: makeAuthToken(data)
+    });
+  } catch (err) {
+    console.error('Register error:', err.message || err);
+    return res.status(500).json({ error: 'Registration failed.' });
+  }
+});
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -220,9 +342,9 @@ app.get('/', (req, res) => {
   });
 });
 
-app.get('/notes', async (req, res) => {
+app.get('/notes', authenticate, async (req, res) => {
   try {
-    const { data, error } = await supabase.from('notes').select('*');
+    const { data, error } = await supabase.from('notes').select('*').eq('user_id', req.user.id);
     if (error) {
       throw error;
     }
@@ -233,11 +355,16 @@ app.get('/notes', async (req, res) => {
   }
 });
 
-app.get('/note/:id', async (req, res) => {
+app.get('/note/:id', authenticate, async (req, res) => {
   const { id } = req.params;
 
   try {
-    const { data, error } = await supabase.from('notes').select('*').eq('id', id).maybeSingle();
+    const { data, error } = await supabase
+      .from('notes')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', req.user.id)
+      .maybeSingle();
     if (error) {
       throw error;
     }
@@ -253,9 +380,9 @@ app.get('/note/:id', async (req, res) => {
   }
 });
 
-app.post('/note', async (req, res) => {
+app.post('/note', authenticate, async (req, res) => {
   const { title, grid, labels } = req.body;
-  const note = { title, grid, labels: normalizeLabels(labels) };
+  const note = { title, grid, labels: normalizeLabels(labels), user_id: req.user.id };
 
   try {
     const { data, error } = await supabase.from('notes').insert([note]).select().single();
@@ -269,13 +396,19 @@ app.post('/note', async (req, res) => {
   }
 });
 
-app.put('/note/:id', async (req, res) => {
+app.put('/note/:id', authenticate, async (req, res) => {
   const { id } = req.params;
   const { title, grid, labels } = req.body;
   const note = { title, grid, labels: normalizeLabels(labels) };
 
   try {
-    const { data, error } = await supabase.from('notes').update({ title, grid, labels: normalizeLabels(labels) }).eq('id', id).select().single();
+    const { data, error } = await supabase
+      .from('notes')
+      .update({ title, grid, labels: normalizeLabels(labels) })
+      .eq('id', id)
+      .eq('user_id', req.user.id)
+      .select()
+      .single();
     if (error || !data) {
       return sendFallback(res, { id, ...note }, id);
     }
@@ -286,10 +419,16 @@ app.put('/note/:id', async (req, res) => {
   }
 });
 
-app.delete('/note/:id', async (req, res) => {
+app.delete('/note/:id', authenticate, async (req, res) => {
   const { id } = req.params;
   try {
-    const { data, error } = await supabase.from('notes').delete().eq('id', id).select().single();
+    const { data, error } = await supabase
+      .from('notes')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', req.user.id)
+      .select()
+      .single();
     if (error) {
       throw error;
     }

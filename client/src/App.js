@@ -30,6 +30,13 @@ function App() {
   const [recordingError, setRecordingError] = useState('');
   const [summary, setSummary] = useState('');
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [user, setUser] = useState(null);
+  const [authToken, setAuthToken] = useState('');
+  const [authMode, setAuthMode] = useState('login');
+  const [authUsername, setAuthUsername] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
   const mediaRecorderRef = useRef(null);
   const recognitionRef = useRef(null);
   const chunksRef = useRef([]);
@@ -41,8 +48,23 @@ function App() {
   }, [transcript]);
 
   useEffect(() => {
-    fetchNotes();
+    const storedToken = localStorage.getItem('authToken');
+    const storedUsername = localStorage.getItem('authUsername');
+    if (storedToken && storedUsername) {
+      setAuthToken(storedToken);
+      setUser({ username: storedUsername });
+    }
   }, []);
+
+  useEffect(() => {
+    if (!authToken) {
+      delete axios.defaults.headers.common.Authorization;
+      return;
+    }
+
+    axios.defaults.headers.common.Authorization = `Bearer ${authToken}`;
+    fetchNotes();
+  }, [authToken]);
 
   useEffect(() => {
     if (view !== 'editor') return undefined;
@@ -63,11 +85,13 @@ function App() {
   }, [view, isDirty]);
 
   const fetchNotes = async () => {
+    if (!authToken) return;
+
     try {
       const res = await axios.get('http://localhost:4000/notes');
       setNotes(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
-      console.warn('Failed to load notes', err.message || err);
+      console.warn('Failed to load notes', err.response?.data?.error || err.message || err);
       setNotes([]);
     }
   };
@@ -157,6 +181,60 @@ function App() {
     } finally {
       setSummaryLoading(false);
     }
+  };
+
+  const login = async () => {
+    setAuthError('');
+    setAuthLoading(true);
+
+    try {
+      const res = await axios.post('http://localhost:4000/login', {
+        username: authUsername,
+        password: authPassword
+      });
+
+      setUser(res.data.user);
+      setAuthToken(res.data.token);
+      localStorage.setItem('authToken', res.data.token);
+      localStorage.setItem('authUsername', res.data.user.username);
+      setView('list');
+    } catch (err) {
+      setAuthError(err.response?.data?.error || err.message || 'Login failed');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const register = async () => {
+    setAuthError('');
+    setAuthLoading(true);
+
+    try {
+      const res = await axios.post('http://localhost:4000/register', {
+        username: authUsername,
+        password: authPassword
+      });
+
+      setUser(res.data.user);
+      setAuthToken(res.data.token);
+      localStorage.setItem('authToken', res.data.token);
+      localStorage.setItem('authUsername', res.data.user.username);
+      setView('list');
+    } catch (err) {
+      setAuthError(err.response?.data?.error || err.message || 'Registration failed');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setAuthToken('');
+    setAuthUsername('');
+    setAuthPassword('');
+    setNotes([]);
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('authUsername');
   };
 
   const startRecording = async () => {
@@ -285,12 +363,66 @@ function App() {
     }
   };
 
+  if (!user) {
+    return (
+      <div className="auth-shell">
+        <div className="auth-card">
+          <h1>{authMode === 'register' ? 'Create account' : 'Sign in'}</h1>
+          <p>
+            {authMode === 'register'
+              ? 'Choose a username and password to create your note account.'
+              : 'Sign in with your username and password.'}
+          </p>
+          {authError ? <div className="auth-error">{authError}</div> : null}
+
+          <label className="auth-field">
+            Username
+            <input
+              value={authUsername}
+              onChange={(e) => setAuthUsername(e.target.value)}
+              placeholder="username"
+              autoComplete="username"
+            />
+          </label>
+
+          <label className="auth-field">
+            Password
+            <input
+              type="password"
+              value={authPassword}
+              onChange={(e) => setAuthPassword(e.target.value)}
+              placeholder="password"
+              autoComplete="current-password"
+            />
+          </label>
+
+          <div className="auth-action-row">
+            <button onClick={authMode === 'register' ? register : login} disabled={authLoading}>
+              {authLoading ? (authMode === 'register' ? 'Creating…' : 'Signing in…') : authMode === 'register' ? 'Create Account' : 'Sign In'}
+            </button>
+            <button
+              className="auth-toggle"
+              type="button"
+              onClick={() => {
+                setAuthMode(authMode === 'register' ? 'login' : 'register');
+                setAuthError('');
+              }}
+            >
+              {authMode === 'register' ? 'Have an account? Sign in' : 'Need an account? Register'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
         <div className="header-left">
           <h1>{view === 'list' ? 'Notes' : noteId ? 'Edit Note' : 'New Note'}</h1>
           {view === 'list' ? <p className="note-count">{notes.length} {notes.length === 1 ? 'note' : 'notes'}</p> : null}
+          <p className="signed-in-as">Signed in as {user.username}</p>
         </div>
 
         <div className="action-row">
@@ -298,6 +430,7 @@ function App() {
           {view === 'editor' ? <button onClick={() => setView('list')}>Back to Notes</button> : null}
           {view === 'editor' ? <button onClick={saveNote}>Save</button> : null}
           {view === 'editor' ? <button onClick={exportExcel}>Export XLSX</button> : null}
+          <button onClick={handleLogout}>Logout</button>
           {view === 'editor' ? (
             <div className={`save-indicator ${isSaving ? 'saving' : isDirty ? 'unsaved' : 'saved'}`}>
               {isSaving ? 'Saving…' : isDirty ? 'Unsaved changes' : 'All changes saved'}
