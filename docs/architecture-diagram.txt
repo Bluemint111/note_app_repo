@@ -1,0 +1,12 @@
++-------------------+       +------------------------+       +----------------------+
+| Vercel Frontend   | <---> | Render Backend API     | <---> | Supabase Database   |
+| React + Axios     |       | Express + Auth + CRUD |       | users + notes       |
++-------------------+       +------------------------+       +----------------------+
+          |                                 |
+          |                                 v
+          |                       +------------------------+
+          +-----------------------> | Render Export Service  |
+                                  | Express + ExcelJS     |
+                                  +------------------------+
+
+AI summary requests are relayed from the backend to the Gemini API.
