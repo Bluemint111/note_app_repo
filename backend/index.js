@@ -14,14 +14,34 @@ const allowedOrigins = [
   'http://127.0.0.1:3001'
 ];
 
+const normalizeOrigin = (value) => {
+  try {
+    return new URL(value).origin;
+  } catch (error) {
+    return value;
+  }
+};
+
 const frontendUrl = process.env.FRONTEND_URL;
 if (frontendUrl) {
-  allowedOrigins.push(frontendUrl);
+  allowedOrigins.push(normalizeOrigin(frontendUrl));
 }
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) {
+    return true;
+  }
+
+  if (allowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  return /^https:\/\/([a-z0-9-]+\.)*vercel\.app$/i.test(origin);
+};
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
       return;
     }
