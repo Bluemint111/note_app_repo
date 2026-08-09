@@ -59,4 +59,4 @@ Required environment variables:
 - `REACT_APP_EXPORT_URL=<your Render export URL>`
 
 ## Live URL
-A public deployment can be served from Vercel for the frontend and Render for the backend/export services.
+[A public deployment can be served from Vercel for the frontend and Render for the backend/export services.](https://note-app-repo.vercel.app/)
