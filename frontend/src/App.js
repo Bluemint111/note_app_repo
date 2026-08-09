@@ -32,6 +32,11 @@ const getMicrophoneSupport = () => {
   }
 
   return { supported: true, getUserMedia, mediaDevices };
+};
+
+function App() {
+  const [view, setView] = useState('list');
+  const [notes, setNotes] = useState([]);
   const [title, setTitle] = useState('My Note');
   const [labelsInput, setLabelsInput] = useState('');
   const [grid, setGrid] = useState(defaultGrid);
