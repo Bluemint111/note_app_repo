@@ -74,7 +74,7 @@ async function main() {
   console.log(`Starting backend, frontend, and export service on ports ${backendPort}, ${frontendPort}, and ${exportPort}...`);
 
   const backend = start(npmCommand, ['start'], path.join(root, 'backend'), 'Backend', { PORT: String(backendPort) });
-  const frontend = start(npmCommand, ['start'], path.join(root, 'front end'), 'Frontend', {
+  const frontend = start(npmCommand, ['start'], path.join(root, 'frontend'), 'Frontend', {
     PORT: String(frontendPort),
     BROWSER: 'none',
     REACT_APP_API_URL: `http://localhost:${backendPort}`,
