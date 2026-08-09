@@ -1,0 +1,9 @@
+{
+  "name": "note-app-repo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node start-all.js",
+    "stop": "node stop-all.js"
+  }
+}
