@@ -7,7 +7,29 @@ require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
-app.use(cors());
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3001'
+];
+
+const frontendUrl = process.env.FRONTEND_URL;
+if (frontendUrl) {
+  allowedOrigins.push(frontendUrl);
+}
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error(`Origin not allowed: ${origin}`));
+  },
+  credentials: true
+}));
 app.use(express.json());
 
 const notesFile = path.join(__dirname, 'notes.json');

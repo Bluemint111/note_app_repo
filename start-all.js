@@ -40,20 +40,30 @@ async function getAvailablePort(startPort, maxAttempts = 20) {
   throw new Error(`Unable to find a free port starting at ${startPort}`);
 }
 
-function start(command, args, cwd, label, extraEnv = {}) {
-  const options = {
+function buildCommandLine(command, args) {
+  return [command, ...args]
+    .map((value) => {
+      const stringValue = String(value);
+      return /\s/.test(stringValue) ? `"${stringValue.replace(/"/g, '\\"')}"` : stringValue;
+    })
+    .join(' ');
+}
+
+function startAttached(command, args, cwd, label, extraEnv = {}) {
+  const spawnOptions = {
     cwd,
-    detached: true,
     stdio: 'inherit',
     windowsHide: false,
     env: { ...process.env, ...extraEnv, FORCE_COLOR: 'true' }
   };
 
-  const child = process.platform === 'win32'
-    ? spawn('cmd.exe', ['/d', '/s', '/c', `${command} ${args.join(' ')}`], options)
-    : spawn(command, args, options);
+  const child = process.platform === 'win32' && command === npmCommand
+    ? spawn('cmd.exe', ['/d', '/s', '/c', buildCommandLine(command, args)], spawnOptions)
+    : spawn(command, args, spawnOptions);
 
-  child.unref();
+  child.on('error', (error) => {
+    console.error(`${label} failed to start:`, error.message);
+  });
 
   child.on('exit', (code) => {
     if (code && code !== 0) {
@@ -62,6 +72,10 @@ function start(command, args, cwd, label, extraEnv = {}) {
   });
 
   return child;
+}
+
+function startNodeScript(scriptPath, cwd, label, extraEnv = {}) {
+  return startAttached(process.execPath, [scriptPath], cwd, label, extraEnv);
 }
 
 async function main() {
@@ -73,14 +87,15 @@ async function main() {
 
   console.log(`Starting backend, frontend, and export service on ports ${backendPort}, ${frontendPort}, and ${exportPort}...`);
 
-  const backend = start(npmCommand, ['start'], path.join(root, 'backend'), 'Backend', { PORT: String(backendPort) });
-  const frontend = start(npmCommand, ['start'], path.join(root, 'frontend'), 'Frontend', {
+  const backend = startNodeScript(path.join(root, 'backend', 'index.js'), path.join(root, 'backend'), 'Backend', { PORT: String(backendPort) });
+  const frontend = startAttached(npmCommand, ['start'], path.join(root, 'frontend'), 'Frontend', {
     PORT: String(frontendPort),
+    HOST: 'localhost',
     BROWSER: 'none',
     REACT_APP_API_URL: `http://localhost:${backendPort}`,
     REACT_APP_EXPORT_URL: `http://localhost:${exportPort}`
   });
-  const exportService = start(npmCommand, ['start'], path.join(root, 'export'), 'Export service', { PORT: String(exportPort) });
+  const exportService = startNodeScript(path.join(root, 'export', 'index.js'), path.join(root, 'export'), 'Export service', { PORT: String(exportPort) });
 
   writePidFile([backend, frontend, exportService]);
 

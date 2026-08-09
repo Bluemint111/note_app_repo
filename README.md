@@ -10,7 +10,7 @@ This project contains:
 
 1. Install Node.js.
 2. Install dependencies for each app:
-   - `cd "front end" && npm install`
+- `cd frontend && npm install`
    - `cd backend && npm install`
    - `cd export && npm install`
 
@@ -28,6 +28,6 @@ To stop everything again:
 
 Or run each service separately:
 
-- Front-end: `cd "front end" && npm start`
+- Front-end: `cd frontend && npm start`
 - Back-end: `cd backend && npm start`
 - Export service: `cd export && npm start`

@@ -16,9 +16,22 @@ const parseLabels = (value) => {
     .filter(Boolean);
 };
 
-function App() {
-  const [view, setView] = useState('list');
-  const [notes, setNotes] = useState([]);
+const getMicrophoneSupport = () => {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+    return { supported: false, reason: 'Voice recording is unavailable in this environment.' };
+  }
+
+  const mediaDevices = navigator.mediaDevices;
+  const getUserMedia = mediaDevices?.getUserMedia || navigator.getUserMedia || window.webkitGetUserMedia;
+  if (typeof getUserMedia !== 'function') {
+    return { supported: false, reason: 'Voice recording is not supported in this browser.' };
+  }
+
+  if (typeof window.MediaRecorder === 'undefined') {
+    return { supported: false, reason: 'Voice recording is not supported in this browser.' };
+  }
+
+  return { supported: true, getUserMedia, mediaDevices };
   const [title, setTitle] = useState('My Note');
   const [labelsInput, setLabelsInput] = useState('');
   const [grid, setGrid] = useState(defaultGrid);
@@ -243,11 +256,19 @@ function App() {
     try {
       setRecordingError('');
       setTranscript('');
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error('Voice recording is not supported in this browser.');
+
+      const microphoneSupport = getMicrophoneSupport();
+      if (!microphoneSupport.supported) {
+        throw new Error(microphoneSupport.reason);
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const hostname = window.location.hostname;
+      const isLocalhostContext = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+      if (!window.isSecureContext && !isLocalhostContext) {
+        throw new Error('Open the app from localhost or use HTTPS so Chrome can access your microphone.');
+      }
+
+      const stream = await microphoneSupport.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
       chunksRef.current = [];
       recorder.ondataavailable = (event) => {
@@ -288,7 +309,10 @@ function App() {
 
       setIsRecording(true);
     } catch (err) {
-      setRecordingError(err.message || 'Unable to start recording.');
+      const message = err?.name === 'NotAllowedError' || err?.message?.includes('Permission')
+        ? 'Microphone access was blocked. Please allow microphone access and refresh the page.'
+        : err.message || 'Unable to start recording.';
+      setRecordingError(message);
     }
   };
 
